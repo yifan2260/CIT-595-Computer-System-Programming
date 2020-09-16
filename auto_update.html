@@ -1,0 +1,192 @@
+<html>
+<head>
+<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js'></script>
+<script src='https://d3js.org/d3.v4.min.js'></script>
+<style>
+button {
+	background-color: blue;
+	border: none;
+	color: orange;
+	padding: 15px 32px;
+	text-align: center;
+	text-decoration: none;
+	display: inline-block;
+	font-size: 16px;
+	margin: 4px 2px;
+	cursor: pointer;
+}
+.axis {
+        font-family: sans-serif;
+		fill: #d35400;
+		font-size: 12px;
+	}.line {
+        fill: none;
+		stroke: #f1c40f;
+		stroke-width: 3px;
+	}.smoothline {fill: none;
+		stroke: blue;
+		stroke-width: 1px;
+	}.area {
+		fill: green;
+		opacity: 0.5;
+	}.grid {
+		stroke: #DDD;
+		stroke-width: 1px;
+		fill: none;
+	}
+</style>
+</head>
+<body>
+<svg id="chart" width=400 height=240></svg>
+<p>
+    <input id="frequency">ms for sleep
+    <button onclick="writeFreq()">change frequency</button>
+    </p>
+<p>
+    <input id="send">ms for sending
+    <button onclick="changeSend()">auto rate</button>
+    </p>
+<ul>
+	<li id="usage"></li>
+    <li id="max"></li>
+    <li id="average"></li>
+    <li id="thred"></li>
+</ul>
+<button class="button" onclick="autoUpdate()">Auto-update</button>
+<p>
+    <input id="thredsholds">
+<button onclick="thr()">thresholds</button>
+<script>
+var thresholds = 90;
+var usage = %f;
+var max = %f;
+var average = %f;
+$("#usage").html("usage: " + String(usage));
+$("#max").html("max: "+ String(max));
+$("#average").html("average: " + String(average));
+$("#thred").html("thresholds: " + String(thresholds));
+    var myVar;
+    var datas = [{x: 0, y: (usage *2 + 10)}];
+    var width = 400;
+    var height = 220;
+    var globalX = 1;
+    var slide = 20;//at most 20 usages in one slide
+    var step = 1;//1s per move
+    var chart = d3.select('svg');
+    var x = d3.scaleLinear().domain([0, 20]).range([0, 400]);
+    var y = d3.scaleLinear().domain([0, height]).range([height, 0]);
+    // -----------------------------------
+    var line = d3.line()
+		.x(function(d){ return x(d.x); })
+		.y(function(d){ return y(d.y); });
+    var smoothLine = d3.line().curve(d3.curveCardinal)
+		.x(function(d){ return x(d.x); })
+		.y(function(d){ return y(d.y); });
+    var lineArea = d3.area()
+		.x(function(d){ return x(d.x); })
+		.y0(y(10))
+		.y1(function(d){ return y(d.y); })
+		.curve(d3.curveCardinal);
+    // -----------------------------------
+    // Draw the axis
+    var xAxis = d3.axisBottom().scale(x);
+    var axisX = chart.append('g')
+		.attr('transform', 'translate(0, 210)')
+		.call(xAxis);
+    var yScale = d3.scaleLinear().range([height, 0])
+    	.domain([-5, 105]);
+    var yAxis = d3.axisRight(yScale);
+    chart.append('g').attr('transform', 'translate(0, 0)').call(yAxis);
+    // Draw the grid
+    chart.append('path').datum([{x: 20, y: 70}, {x: 0, y: 70}])
+		.attr('class', 'grid')
+		.attr('d', line);
+    chart.append('path').datum([{x: 20, y: 120}, {x: 0, y: 120}])
+		.attr('class', 'grid')
+		.attr('d', line);
+    chart.append('path').datum([{x: 20, y: 170}, {x: 0, y: 170}])
+		.attr('class', 'grid')
+		.attr('d', line);
+    chart.append('path').datum([{x: 20, y: 220}, {x: 0, y: 220}])
+		.attr('class', 'grid')
+		.attr('d', line);
+    chart.append('path').datum([{x: 15, y: 0}, {x: 15, y: 220}])
+		.attr('class', 'grid')
+		.attr('d', line);
+    chart.append('path').datum([{x: 10, y: 0}, {x: 10, y: 220}])
+		.attr('class', 'grid')
+		.attr('d', line);
+    chart.append('path').datum([{x: 5, y: 0}, {x: 5, y: 220}])
+		.attr('class', 'grid')
+		.attr('d', line);
+
+    // Append the holder for line chart and fill area
+    var path = chart.append('path');
+    var areaPath = chart.append('path');
+
+function handle() {
+    $.getJSON('/data',
+		function (data, status) {
+            if(data.usage > Number(thresholds)) {
+                $("#usage").css('color', 'red');
+                alert('Usage exceeded!');
+            }
+            else $("#usage").css('color', 'black');
+			$("#usage").html("usage: " + String(data.usage));
+			$("#max").html("max: "+ String(data.max));
+			$("#average").html("average: " + String(data.average));
+        var point = {x: globalX,y: (Number(data.usage)*2 + 10)};
+	    datas.push(point);
+	    globalX += step;
+	    // Draw new line
+	    var select = path.datum(datas)
+		    .attr('class', 'smoothline')
+		    .attr('d', smoothLine);
+	    // Draw new fill area
+	    areaPath.datum(datas)
+		    .attr('class', 'area')
+		    .attr('d', lineArea);
+	    // Shift the chart left
+	    if(globalX > 20){
+        	x.domain([globalX - (slide - step), globalX]);
+	    axisX.transition()
+		     .ease(d3.easeLinear,1)
+		     .call(xAxis);
+	    path.attr('transform', null)
+		    .transition()
+		    .ease(d3.easeLinear,1)
+		    .attr('transform', 'translate(' + x(globalX - slide) + ')')
+	    areaPath.attr('transform', null)
+		    .transition()
+		    .ease(d3.easeLinear,1)
+		    .attr('transform', 'translate(' + x(globalX - slide) + ')')
+        }
+	    // Remove old data (max 20 usages)
+	    if (datas.length > 20 / step) datas.shift();
+		}
+	);
+}
+function writeFreq(){
+    $.ajax({
+        url:"/data/freq='frequency'",
+        contentType:"application/json",
+        data:JSON.stringify({"frequency" : $("#frequency").val()}),
+        dataType:"json",
+        type:"POST",
+    });
+}
+function autoUpdate(){
+    myVar = setInterval(handle, 1000);
+}
+function changeSend(){
+    clearInterval(myVar);
+    myVar = setInterval(handle, $("#send").val());
+    step = $("#send").val() / 1000;
+}
+function thr(){
+    thresholds = $("#thredsholds").val();
+    $("#thred").html("thresholds: " + String(thresholds));
+}
+</script>
+</body>
+</html>

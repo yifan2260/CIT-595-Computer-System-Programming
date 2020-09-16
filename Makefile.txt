@@ -1,0 +1,10 @@
+CC = clang
+ARGS = -Wall -g
+
+all: server
+
+server:
+	$(CC) -o server $(ARGS) server.c cpu.c test.c -pthread
+
+clean: 
+	rm -rf server
